@@ -118,9 +118,9 @@ void _2526HW4KeyAudioProcessor::prepareToPlay (double sampleRate, int samplesPer
     int numChannels = getTotalNumOutputChannels();
     
     // 10 ms smoothing - takes 10ms to get to the next val
-    smoothedDelay.reset(samplingRate, 0.01);
-    smoothedMix.reset(samplingRate, 0.01);
-    smoothedFeedback.reset(samplingRate, 0.01);
+    smoothedDelay.reset(samplingRate, 0.03);
+    smoothedMix.reset(samplingRate, 0.03);
+    smoothedFeedback.reset(samplingRate, 0.03);
 
     delay.prepare(samplingRate, maxDelay, numChannels);
     
