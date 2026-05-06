@@ -10,7 +10,7 @@
 #include "PluginEditor.h"
 
 //==============================================================================
-_2526Activity10AudioProcessor::_2526Activity10AudioProcessor()
+AudioTech2Lecture9AudioProcessor::AudioTech2Lecture9AudioProcessor()
 #ifndef JucePlugin_PreferredChannelConfigurations
      : AudioProcessor (BusesProperties()
                      #if ! JucePlugin_IsMidiEffect
@@ -19,22 +19,35 @@ _2526Activity10AudioProcessor::_2526Activity10AudioProcessor()
                       #endif
                        .withOutput ("Output", juce::AudioChannelSet::stereo(), true)
                      #endif
-                       )
+                       ),
 #endif
+    apvts(*this, nullptr, "Parameters", createParams())
 {
 }
 
-_2526Activity10AudioProcessor::~_2526Activity10AudioProcessor()
+AudioTech2Lecture9AudioProcessor::~AudioTech2Lecture9AudioProcessor()
 {
+}
+
+juce::AudioProcessorValueTreeState::ParameterLayout AudioTech2Lecture9AudioProcessor::createParams()
+{
+    return {
+        std::make_unique<juce::AudioParameterFloat>(juce::ParameterID{"delay", 1}, "Delay length", 0.0, 2, 0.25),
+        std::make_unique<juce::AudioParameterFloat>(juce::ParameterID{"mix", 1}, "Mix", 0.0f, 1.0f, 0.5f),
+        std::make_unique<juce::AudioParameterFloat>(juce::ParameterID{"feedback", 1}, "Feedback", 0.0f, 0.95f, 0.3f),
+        std::make_unique<juce::AudioParameterFloat>(juce::ParameterID{"rate", 1}, "Rate", 0.05f, 5.0f, 0.5f),
+        std::make_unique<juce::AudioParameterFloat>(juce::ParameterID{"depth", 1}, "Depth", 0.0f, 0.5f, 0.1f), // seconds
+        std::make_unique<juce::AudioParameterBool>(juce::ParameterID{"modOn", 1}, "Modulation On", true)
+    };
 }
 
 //==============================================================================
-const juce::String _2526Activity10AudioProcessor::getName() const
+const juce::String AudioTech2Lecture9AudioProcessor::getName() const
 {
     return JucePlugin_Name;
 }
 
-bool _2526Activity10AudioProcessor::acceptsMidi() const
+bool AudioTech2Lecture9AudioProcessor::acceptsMidi() const
 {
    #if JucePlugin_WantsMidiInput
     return true;
@@ -43,7 +56,7 @@ bool _2526Activity10AudioProcessor::acceptsMidi() const
    #endif
 }
 
-bool _2526Activity10AudioProcessor::producesMidi() const
+bool AudioTech2Lecture9AudioProcessor::producesMidi() const
 {
    #if JucePlugin_ProducesMidiOutput
     return true;
@@ -52,7 +65,7 @@ bool _2526Activity10AudioProcessor::producesMidi() const
    #endif
 }
 
-bool _2526Activity10AudioProcessor::isMidiEffect() const
+bool AudioTech2Lecture9AudioProcessor::isMidiEffect() const
 {
    #if JucePlugin_IsMidiEffect
     return true;
@@ -61,60 +74,59 @@ bool _2526Activity10AudioProcessor::isMidiEffect() const
    #endif
 }
 
-double _2526Activity10AudioProcessor::getTailLengthSeconds() const
+double AudioTech2Lecture9AudioProcessor::getTailLengthSeconds() const
 {
     return 0.0;
 }
 
-int _2526Activity10AudioProcessor::getNumPrograms()
+int AudioTech2Lecture9AudioProcessor::getNumPrograms()
 {
     return 1;   // NB: some hosts don't cope very well if you tell them there are 0 programs,
                 // so this should be at least 1, even if you're not really implementing programs.
 }
 
-int _2526Activity10AudioProcessor::getCurrentProgram()
+int AudioTech2Lecture9AudioProcessor::getCurrentProgram()
 {
     return 0;
 }
 
-void _2526Activity10AudioProcessor::setCurrentProgram (int index)
+void AudioTech2Lecture9AudioProcessor::setCurrentProgram (int index)
 {
 }
 
-const juce::String _2526Activity10AudioProcessor::getProgramName (int index)
+const juce::String AudioTech2Lecture9AudioProcessor::getProgramName (int index)
 {
     return {};
 }
 
-void _2526Activity10AudioProcessor::changeProgramName (int index, const juce::String& newName)
+void AudioTech2Lecture9AudioProcessor::changeProgramName (int index, const juce::String& newName)
 {
 }
 
 //==============================================================================
-void _2526Activity10AudioProcessor::prepareToPlay (double sampleRate, int numSamplesPerBlock)
+void AudioTech2Lecture9AudioProcessor::prepareToPlay (double sampleRate, int samplesPerBlock)
 {
-    // You need to initialize your variables here!
+
     samplingRate = sampleRate;
-    samplesPerBlock = numSamplesPerBlock;
-    
-    freq = 440;
-    amp = 1;
-    phase = 0;
-    
-    // envelope length in samples
-    envSamples = samplingRate * int(envSec);
-    
-    envTracker = 0;
+
+    bufferSize = samplesPerBlock;
+
+    int maxDelay = maxDelaySec * samplingRate;
+
+    int numChannels = getTotalNumOutputChannels();
+
+    delay.prepare(samplingRate, maxDelay, numChannels);
+
 }
 
-void _2526Activity10AudioProcessor::releaseResources()
+void AudioTech2Lecture9AudioProcessor::releaseResources()
 {
     // When playback stops, you can use this as an opportunity to free up any
     // spare memory, etc.
 }
 
 #ifndef JucePlugin_PreferredChannelConfigurations
-bool _2526Activity10AudioProcessor::isBusesLayoutSupported (const BusesLayout& layouts) const
+bool AudioTech2Lecture9AudioProcessor::isBusesLayoutSupported (const BusesLayout& layouts) const
 {
   #if JucePlugin_IsMidiEffect
     juce::ignoreUnused (layouts);
@@ -139,8 +151,11 @@ bool _2526Activity10AudioProcessor::isBusesLayoutSupported (const BusesLayout& l
 }
 #endif
 
-void _2526Activity10AudioProcessor::processBlock (juce::AudioBuffer<float>& buffer, juce::MidiBuffer& midiMessages)
+void AudioTech2Lecture9AudioProcessor::processBlock (juce::AudioBuffer<float>& buffer, juce::MidiBuffer& midiMessages)
 {
+
+    DBG("process block called");
+
     juce::ScopedNoDenormals noDenormals;
     auto totalNumInputChannels  = getTotalNumInputChannels();
     auto totalNumOutputChannels = getTotalNumOutputChannels();
@@ -154,92 +169,49 @@ void _2526Activity10AudioProcessor::processBlock (juce::AudioBuffer<float>& buff
     for (auto i = totalNumInputChannels; i < totalNumOutputChannels; ++i)
         buffer.clear (i, 0, buffer.getNumSamples());
 
-    genSineWave(buffer);
-    applyEnvRamp(buffer);
-}
 
-void _2526Activity10AudioProcessor::genSineWave(juce::AudioBuffer<float>& buffer)
-{
-    // Fill the buffer (in place) with a sinusoid
-    // your code goes here!
-    
-    float phaseStart = phase;
-    for (int channel = 0; channel < buffer.getNumChannels(); ++channel) {
-        
+    int numSamples = buffer.getNumSamples();
+
+    // get params
+
+    auto* delayParam = apvts.getRawParameterValue("delay");
+    auto delayLengthSec = delayParam->load();
+
+    delay.setDelayTime(delayLengthSec);
+
+    delay.setWetMix(0.5);
+
+    for (int channel = 0; channel < totalNumInputChannels; ++channel)
+    {
         auto* channelData = buffer.getWritePointer(channel);
-        phase = phaseStart;
-        
-        for (int i = 0; i < samplesPerBlock; i++) {
-            channelData[i] = amp * sinf(phase);
-            
-            phase += juce::MathConstants<float>::twoPi * freq / samplingRate;
-            
-            if (phase >= juce::MathConstants<float>::twoPi){
-                phase -= juce::MathConstants<float>::twoPi;
-            }
-            
+
+        for (int i = 0; i < numSamples; ++i)
+        {
+            channelData[i] = delay.processSample(channelData[i], channel);
         }
     }
-    
-}
-
-
-void _2526Activity10AudioProcessor::applyEnvRamp(juce::AudioBuffer<float>& buffer)
-{
-    // Apply an amplitude envelope to the buffer (in place)
-    // Multiply each sample by an envelope value (0 → 1 → 0)
-    // your code goes here!
-    
-    int envStart = envTracker;
-    float envVal;
-    float halfEnvLen = float(envSamples) / 2;
-    
-    for (int channel = 0; channel < buffer.getNumChannels(); ++channel) {
-        auto* channelData = buffer.getWritePointer(channel);
-        envTracker = envStart;
-        
-        for (int i = 0; i < samplesPerBlock; i++) {
-            
-            if (envTracker < halfEnvLen) {
-                envVal = envTracker / halfEnvLen;
-            }
-            else {
-                envVal = 1 - (envTracker - halfEnvLen) / halfEnvLen;
-            }
-            
-            channelData[i] *= envVal;
-            
-            envTracker++;
-            
-            if (envTracker >= envSamples) {
-                envTracker = 0;
-            }
-        }
-        
-    }
-    
 }
 
 //==============================================================================
-bool _2526Activity10AudioProcessor::hasEditor() const
+bool AudioTech2Lecture9AudioProcessor::hasEditor() const
 {
     return true; // (change this to false if you choose to not supply an editor)
 }
 
-juce::AudioProcessorEditor* _2526Activity10AudioProcessor::createEditor()
+juce::AudioProcessorEditor* AudioTech2Lecture9AudioProcessor::createEditor()
 {
-    return new _2526Activity10AudioProcessorEditor (*this);
+    return new AudioTech2Lecture9AudioProcessorEditor (*this);
 }
 
 //==============================================================================
-void _2526Activity10AudioProcessor::getStateInformation (juce::MemoryBlock& destData)
+void AudioTech2Lecture9AudioProcessor::getStateInformation (juce::MemoryBlock& destData)
 {
     // You should use this method to store your parameters in the memory block.
     // You could do that either as raw data, or use the XML or ValueTree classes
     // as intermediaries to make it easy to save and load complex data.
 }
 
-void _2526Activity10AudioProcessor::setStateInformation (const void* data, int sizeInBytes)
+void AudioTech2Lecture9AudioProcessor::setStateInformation (const void* data, int sizeInBytes)
 {
     // You should use this method to restore your parameters from this memory block,
     // whose contents will have been created by the getStateInformation() call.
@@ -249,5 +221,5 @@ void _2526Activity10AudioProcessor::setStateInformation (const void* data, int s
 // This creates new instances of the plugin..
 juce::AudioProcessor* JUCE_CALLTYPE createPluginFilter()
 {
-    return new _2526Activity10AudioProcessor();
+    return new AudioTech2Lecture9AudioProcessor();
 }
